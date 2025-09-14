@@ -105,7 +105,8 @@ exports.handler = async function (event, context) {
     }
 
     // Determine extra path to append
-    const queryPath = (event.queryStringParameters && event.queryStringParameters.path) || "";
+    const queryPath =
+      (event.queryStringParameters && event.queryStringParameters.path) || "";
     const headerPath = headerCI(event.headers, "x-forward-path") || "";
     const extraPath = (queryPath || headerPath || "").toString();
 
@@ -133,7 +134,12 @@ exports.handler = async function (event, context) {
     }
 
     // Forward some common headers
-    const forwardHeaderNames = ["x-api-key", "x-request-id", "user-agent", "accept"];
+    const forwardHeaderNames = [
+      "x-api-key",
+      "x-request-id",
+      "user-agent",
+      "accept",
+    ];
     for (const hn of forwardHeaderNames) {
       const val = headerCI(event.headers, hn);
       if (val) upstreamHeaders[hn] = val;
@@ -143,7 +149,10 @@ exports.handler = async function (event, context) {
     let upstreamFetchUrl = upstreamUrl;
     if (method === "GET") {
       let incomingQs = {};
-      if (event.queryStringParameters && Object.keys(event.queryStringParameters).length) {
+      if (
+        event.queryStringParameters &&
+        Object.keys(event.queryStringParameters).length
+      ) {
         incomingQs = event.queryStringParameters;
       } else if (event.rawQuery && typeof event.rawQuery === "string") {
         incomingQs = parseRawQueryToObj(event.rawQuery);
@@ -156,14 +165,17 @@ exports.handler = async function (event, context) {
         for (const [k, v] of qsEntries) {
           if (Array.isArray(v)) {
             for (const vv of v) {
-              qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(vv)}`);
+              qsParts.push(
+                `${encodeURIComponent(k)}=${encodeURIComponent(vv)}`
+              );
             }
           } else {
             qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
           }
         }
         const qs = qsParts.join("&");
-        upstreamFetchUrl = upstreamUrl + (upstreamUrl.includes("?") ? "&" : "?") + qs;
+        upstreamFetchUrl =
+          upstreamUrl + (upstreamUrl.includes("?") ? "&" : "?") + qs;
       }
     }
 
@@ -171,44 +183,54 @@ exports.handler = async function (event, context) {
       method,
       headers: upstreamHeaders,
     };
-    if (method !== "GET" && payload !== null) fetchOptions.body = JSON.stringify(payload);
+    if (method !== "GET" && payload !== null)
+      fetchOptions.body = JSON.stringify(payload);
 
     const resp = await fetch(upstreamFetchUrl, fetchOptions);
     const text = await resp.text().catch(() => "");
 
-    // try to parse JSON friendly message
+    // Try to parse the response and provide both raw and parsed versions
+    let parsedUpstreamBody = null;
     let message = "";
+
     try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === "object") {
-        // pick a useful field if present
-        const candidate = ["message", "text", "response", "body", "result"];
-        for (const c of candidate) {
-          if (Object.prototype.hasOwnProperty.call(parsed, c)) {
-            if (typeof parsed[c] === "string") {
-              message = parsed[c];
-              break;
-            } else {
-              message = JSON.stringify(parsed[c]);
-              break;
+      parsedUpstreamBody = JSON.parse(text);
+      if (parsedUpstreamBody && typeof parsedUpstreamBody === "object") {
+        // For arrays, use them directly as message
+        if (Array.isArray(parsedUpstreamBody)) {
+          message = JSON.stringify(parsedUpstreamBody);
+        } else {
+          // Pick a useful field if present
+          const candidate = ["message", "text", "response", "body", "result"];
+          for (const c of candidate) {
+            if (Object.prototype.hasOwnProperty.call(parsedUpstreamBody, c)) {
+              if (typeof parsedUpstreamBody[c] === "string") {
+                message = parsedUpstreamBody[c];
+                break;
+              } else {
+                message = JSON.stringify(parsedUpstreamBody[c]);
+                break;
+              }
             }
           }
+          if (!message) message = JSON.stringify(parsedUpstreamBody);
         }
-        if (!message) message = JSON.stringify(parsed);
       } else {
-        message = String(parsed);
+        message = String(parsedUpstreamBody);
       }
     } catch (e) {
       message = text;
     }
 
     return {
-      statusCode: typeof resp.status === "number" ? resp.status : (resp.ok ? 200 : 502),
+      statusCode:
+        typeof resp.status === "number" ? resp.status : resp.ok ? 200 : 502,
       headers: corsHeaders,
       body: JSON.stringify({
         ok: !!resp.ok,
         status: resp.status,
-        upstreamBody: text,
+        upstreamBody: text, // Keep raw text
+        parsedUpstreamBody: parsedUpstreamBody, // Add parsed version
         message,
       }),
     };
