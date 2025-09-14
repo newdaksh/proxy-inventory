@@ -1,0 +1,6 @@
+[build]
+  functions = "netlify/functions"
+  command = "echo 'no build'"
+
+[dev]
+  functions = "netlify/functions"
