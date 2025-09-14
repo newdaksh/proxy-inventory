@@ -95,7 +95,7 @@ exports.handler = async function (event, context) {
     }
 
     // Where to forward
-    const N8N_WEBHOOK_URL = "https://n8n.dakshjain.me/webhook";
+    const N8N_WEBHOOK_URL = "https://n8n.dakshjain.me/webhook-test";
     if (!N8N_WEBHOOK_URL) {
       return {
         statusCode: 500,
