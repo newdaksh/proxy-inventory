@@ -5,7 +5,7 @@ const fetch = require("node-fetch");
 const DEFAULT_CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*", // change to specific origin(s) if needed
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-API-Key, X-Forward-Path, x-forward-path, Accept",
+    "Content-Type, Authorization, X-API-Key, X-Forward-Path, x-forward-path, x-operation, X-Operation, Accept",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS, DELETE",
   "Access-Control-Allow-Credentials": "false",
   "Access-Control-Max-Age": "86400",
@@ -74,6 +74,22 @@ exports.handler = async function (event, context) {
     let payload = null;
     if (method === "GET") {
       payload = event.queryStringParameters || {};
+    } else if (method === "DELETE") {
+      // Handle DELETE method with body data
+      if (event.body) {
+        try {
+          payload = JSON.parse(event.body);
+        } catch (err) {
+          return {
+            statusCode: 400,
+            headers: corsHeaders,
+            body: JSON.stringify({ ok: false, error: "invalid_json" }),
+          };
+        }
+      } else {
+        // Allow empty DELETE but provide empty object
+        payload = {};
+      }
     } else {
       if (!event.body) {
         // Allow empty POSTs but return 400 for clarity
@@ -120,6 +136,12 @@ exports.handler = async function (event, context) {
     // Build headers to send upstream
     const upstreamHeaders = {};
     if (method !== "GET") upstreamHeaders["Content-Type"] = "application/json";
+
+    // Forward x-operation header for N8N workflow routing
+    const xOperation = headerCI(event.headers, "x-operation");
+    if (xOperation) {
+      upstreamHeaders["x-operation"] = xOperation;
+    }
 
     // If N8N basic auth is configured via env, use it
     const N8N_USER = process.env.N8N_USER || "";
